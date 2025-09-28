@@ -1,10 +1,10 @@
-!\[Python](https://img.shields.io/badge/python-v3.7+-blue.svg)
+https://img.shields.io/badge/python-v3.7+-blue.svg
 
-!\[Flask](https://img.shields.io/badge/flask-v2.3.2-green.svg)
+https://img.shields.io/badge/flask-v2.3.2-green.svg
 
-!\[License](https://img.shields.io/badge/license-MIT-blue.svg)
+https://img.shields.io/badge/license-MIT-blue.svg
 
-!\[PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
+https://img.shields.io/badge/PRs-welcome-brightgreen.svg
 
 
 
@@ -213,4 +213,5 @@ If you find this project helpful, please give it a star!
 
 
 Made with ❤️ and ☕
+
 
