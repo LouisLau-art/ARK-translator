@@ -193,6 +193,16 @@ def index():
                 transform: translate(-50%, -50%) scale(1.1);
             }
 
+            /* 折叠状态下按钮位置调整 */
+            .input-section.collapsed + .collapse-btn {
+                left: 16px;
+                transform: translate(0, -50%);
+            }
+
+            .input-section.collapsed + .collapse-btn:hover {
+                transform: translate(0, -50%) scale(1.1);
+            }
+
             /* 折叠状态样式 */
             .input-section.collapsed {
                 flex: 0 0 0;
