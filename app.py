@@ -364,21 +364,58 @@ def index():
             .font-size-control {
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 12px;
             }
 
             .font-size-control label {
                 font-weight: 600;
                 color: var(--text-color);
+                white-space: nowrap;
             }
 
-            .font-size-control select {
-                padding: 6px 10px;
-                border: 1px solid var(--border-color);
-                border-radius: 6px;
-                background: var(--input-bg);
+            .font-size-control input[type="range"] {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 160px;
+                height: 4px;
+                border-radius: 4px;
+                background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+                outline: none;
+            }
+
+            .font-size-control input[type="range"]::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: #fff;
+                border: 2px solid var(--primary-color);
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            }
+
+            .font-size-control input[type="range"]::-moz-range-thumb {
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: #fff;
+                border: 2px solid var(--primary-color);
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            }
+
+            .font-size-control input[type="range"]::-moz-range-track {
+                height: 4px;
+                border-radius: 4px;
+                background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            }
+
+            .font-size-control .font-size-value {
+                min-width: 42px;
+                text-align: right;
+                font-variant-numeric: tabular-nums;
                 color: var(--text-color);
-                font-size: 14px;
             }
 
             .switch {
@@ -556,14 +593,9 @@ def index():
                     </label>
                 </div>
                 <div class="font-size-control">
-                    <label for="fontSizeSelect">字体大小</label>
-                    <select id="fontSizeSelect">
-                        <option value="14">14px</option>
-                        <option value="16" selected>16px</option>
-                        <option value="18">18px</option>
-                        <option value="20">20px</option>
-                        <option value="22">22px</option>
-                    </select>
+                    <label for="fontSizeSlider">字体大小</label>
+                    <input type="range" id="fontSizeSlider" min="12" max="26" step="1" value="16">
+                    <span id="fontSizeValue" class="font-size-value">16px</span>
                 </div>
                 <div id="statusMessage">准备就绪</div>
             </div>
@@ -683,7 +715,8 @@ def index():
             const collapseBtn = document.getElementById('collapseBtn');
             const inputSection = document.getElementById('inputSection');
             const outputSection = document.getElementById('outputSection');
-            const fontSizeSelect = document.getElementById('fontSizeSelect');
+            const fontSizeSlider = document.getElementById('fontSizeSlider');
+            const fontSizeValue = document.getElementById('fontSizeValue');
 
             // 折叠/展开功能
             let isCollapsed = false;
@@ -753,14 +786,15 @@ def index():
                 }
             });
 
-            fontSizeSelect.addEventListener('change', function() {
-                const size = fontSizeSelect.value;
+            fontSizeSlider.addEventListener('input', function() {
+                const size = fontSizeSlider.value;
+                fontSizeValue.textContent = `${size}px`;
                 document.documentElement.style.setProperty('--editor-font-size', `${size}px`);
             });
 
             // 初始化字符计数
             updateCharCount();
-            document.documentElement.style.setProperty('--editor-font-size', `${fontSizeSelect.value}px`);
+            document.documentElement.style.setProperty('--editor-font-size', `${fontSizeSlider.value}px`);
         </script>
     </body>
     </html>
