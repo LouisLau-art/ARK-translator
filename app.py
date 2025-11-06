@@ -58,8 +58,9 @@ def ark_translate(text, source_lang, target_lang):
                 content_item = output_item["content"][0]
                 if "text" in content_item:
                     translated_text = content_item["text"]
-                    html_translation = markdown.markdown(translated_text, extensions=['fenced_code'])
-                    return html_translation
+                    # 保护数学公式不被markdown转换破坏
+                    # 直接返回原始翻译结果，让前端MathJax处理数学公式
+                    return translated_text
         
         return "无法解析翻译结果"
             
@@ -75,6 +76,37 @@ def index():
         <title>ARK豆包翻译器 - 暗黑模式</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <!-- MathJax 配置 -->
+        <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+        <script id="MathJax-script" async
+                src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+        </script>
+        <script>
+            // MathJax 配置
+            window.MathJax = {
+                tex: {
+                    inlineMath: [['$', '$'], ['\\(', '\\)']],
+                    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                    processEscapes: true,
+                    processEnvironments: true,
+                    packages: {'[+]': ['ams']}
+                },
+                options: {
+                    ignoreHtmlClass: 'tex2jax_ignore',
+                    processHtmlClass: 'tex2jax_process'
+                }
+            };
+            
+            // 添加公式重渲染函数
+            function rerenderMath() {
+                if (window.MathJax) {
+                    MathJax.typesetClear();
+                    MathJax.typesetPromise().catch(function(err) {
+                        console.error('MathJax typeset error:', err);
+                    });
+                }
+            }
+        </script>
         <style>
             :root {
                 --background: #121212;
@@ -118,6 +150,7 @@ def index():
                 display: flex;
                 flex: 1;
                 min-height: 0; /* 允许容器收缩 */
+                position: relative; /* 为折叠按钮提供定位参考 */
             }
 
             .input-section, .output-section {
@@ -125,12 +158,82 @@ def index():
                 padding: 20px;
                 display: flex;
                 flex-direction: column;
+                min-width: 0; /* 防止flex子项溢出 */
+                transition: flex 0.3s ease; /* 添加平滑过渡效果 */
             }
 
             .input-section {
                 border-right: 1px solid var(--border-color);
             }
 
+            /* 折叠按钮样式 */
+            .collapse-btn {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                background: var(--primary-color);
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 32px;
+                height: 32px;
+                cursor: pointer;
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10;
+                transition: all 0.3s ease;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            }
+
+            .collapse-btn:hover {
+                background: var(--secondary-color);
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+
+            /* 折叠状态样式 */
+            .input-section.collapsed {
+                flex: 0 0 0;
+                padding: 0;
+                overflow: hidden;
+                border-right: none;
+            }
+
+            .output-section.expanded {
+                flex: 1;
+            }
+
+            /* 文本自动换行样式 */
+            .text-area, .output-text {
+                flex: 1;
+                min-height: 0;
+                padding: 15px;
+                border: 2px solid var(--border-color);
+                border-radius: 8px;
+                font-size: 16px;
+                line-height: 1.6;
+                resize: none;
+                font-family: inherit;
+                background: var(--input-bg);
+                color: var(--text-color);
+                /* 确保文本自动换行 */
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                overflow-x: hidden; /* 隐藏水平滚动条 */
+            }
+
+            .output-text {
+                background: var(--output-bg);
+                overflow-y: auto;  /* 只保留垂直滚动条 */
+                /* 确保输出文本自动换行 */
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                overflow-x: hidden; /* 隐藏水平滚动条 */
+            }
             .section-header {
                 display: flex;
                 justify-content: space-between;
@@ -294,7 +397,7 @@ def index():
                 margin-top: 5px;
             }
 
-            /* Markdown 渲染样式 */
+            /* Math 渲染样式 */
             .output-text h1, .output-text h2, .output-text h3 {
                 color: var(--primary-color);
                 margin-top: 15px;
@@ -339,13 +442,27 @@ def index():
                 color: #d4d4d4;
                 font-size: 100%;
             }
+            
+            /* 数学公式样式 */
+            .MathJax_Display {
+                margin: 1em 0;
+                text-align: center;
+            }
+            
+            .mjx-chtml {
+                outline: 0;
+            }
+            
+            .MathJax[tabindex]:focus, body :focus .MathJax {
+                display: inline-block !important;
+            }
         </style>
     </head>
     <body>
         <div class="container">
             
             <div class="translation-area">
-                <div class="input-section">
+                <div class="input-section" id="inputSection">
                     <div class="section-header">
                         <div class="language-selector">
                             <span class="lang-label">源语言:</span>
@@ -360,7 +477,7 @@ def index():
                     <textarea 
                         id="textInput" 
                         class="text-area" 
-                        placeholder="请输入要翻译的文本...&#10;&#10;提示：输入文本后会自动翻译，无需点击按钮"
+                        placeholder="请输入要翻译的文本...&#10;&#10;提示：输入文本后会自动翻译，无需点击按钮&#10;支持LaTeX数学公式：$...$ 行内公式，$$...$$ 块级公式"
                         autofocus
                     ></textarea>
                     <div class="char-count">
@@ -368,7 +485,10 @@ def index():
                     </div>
                 </div>
                 
-                <div class="output-section">
+                <!-- 折叠按钮 -->
+                <button type="button" id="collapseBtn" class="collapse-btn" title="折叠/展开输入框">«</button>
+                
+                <div class="output-section" id="outputSection">
                     <div class="section-header">
                         <div class="language-selector">
                             <span class="lang-label">目标语言:</span>
@@ -430,6 +550,12 @@ def index():
                 if (!text) {
                     outputText.innerHTML = "翻译结果将显示在这里...";
                     statusMessage.textContent = "请输入要翻译的文本";
+                    // 即使没有内容，也要确保MathJax处理现有内容
+                    if (typeof MathJax !== 'undefined') {
+                        MathJax.typesetPromise([outputText]).catch(function (err) {
+                            console.log('MathJax渲染错误:', err);
+                        });
+                    }
                     return;
                 }
 
@@ -464,14 +590,32 @@ def index():
                     
                     if (response.ok) {
                         outputText.innerHTML = result.translation;
+                        // 渲染数学公式
+                        if (typeof MathJax !== 'undefined') {
+                            MathJax.typesetPromise([outputText]).catch(function (err) {
+                                console.log('MathJax渲染错误:', err);
+                            });
+                        }
                         statusMessage.textContent = `翻译完成 (${text.length} 字符)`;
                     } else {
                         outputText.textContent = `错误: ${result.error}`;
+                        // 即使出错，也要确保MathJax处理现有内容
+                        if (typeof MathJax !== 'undefined') {
+                            MathJax.typesetPromise([outputText]).catch(function (err) {
+                                console.log('MathJax渲染错误:', err);
+                            });
+                        }
                         statusMessage.textContent = '翻译失败';
                     }
                     
                 } catch (error) {
                     outputText.textContent = `网络错误: ${error.message}`;
+                    // 即使出错，也要确保MathJax处理现有内容
+                    if (typeof MathJax !== 'undefined') {
+                        MathJax.typesetPromise([outputText]).catch(function (err) {
+                            console.log('MathJax渲染错误:', err);
+                        });
+                    }
                     statusMessage.textContent = '连接失败';
                 } finally {
                     loading.style.display = 'none';
@@ -491,6 +635,27 @@ def index():
             const statusMessage = document.getElementById('statusMessage');
             const charCount = document.getElementById('charCount');
             const autoTranslate = document.getElementById('autoTranslate');
+            const collapseBtn = document.getElementById('collapseBtn');
+            const inputSection = document.getElementById('inputSection');
+            const outputSection = document.getElementById('outputSection');
+
+            // 折叠/展开功能
+            let isCollapsed = false;
+            collapseBtn.addEventListener('click', function() {
+                isCollapsed = !isCollapsed;
+                
+                if (isCollapsed) {
+                    inputSection.classList.add('collapsed');
+                    outputSection.classList.add('expanded');
+                    collapseBtn.textContent = '»';
+                    collapseBtn.title = '展开输入框';
+                } else {
+                    inputSection.classList.remove('collapsed');
+                    outputSection.classList.remove('expanded');
+                    collapseBtn.textContent = '«';
+                    collapseBtn.title = '折叠输入框';
+                }
+            });
 
             // 事件监听器
             textInput.addEventListener('input', function() {
@@ -582,12 +747,23 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
 
+# 临时测试路由 - 数学公式渲染验证
+@app.route('/test-math')
+def test_math():
+    """直接返回包含数学公式的测试内容"""
+    test_content = """
+    <h2>行内公式测试</h2>
+    <p>爱因斯坦质能方程: $E = mc^2$</p>
+    <p>二次方程解: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$</p>
+    
+    <h2>块级公式测试</h2>
+    <p>高斯积分: $$\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$</p>
+    <p>求和公式: $$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$$</p>
+    """
+    return test_content
+
 if __name__ == '__main__':
-    # 检查环境变量
-    api_key = os.getenv('ARK_API_KEY')
-    if api_key:
-        print(f"✅ API Key已加载: {api_key[:10]}...")
-    else:
+    if not os.getenv('ARK_API_KEY'):
         print("⚠️  警告: 请设置ARK_API_KEY环境变量")
     
     app.run(debug=True, host='127.0.0.1', port=5000)
