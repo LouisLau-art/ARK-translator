@@ -2,11 +2,13 @@ from flask import Flask, render_template, request, jsonify
 import requests
 import os
 import json
+from pathlib import Path
 from dotenv import load_dotenv
 import markdown
 
 # 加载.env文件
-load_dotenv('translator.env')
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / 'translator.env')
 
 app = Flask(__name__)
 
@@ -19,7 +21,7 @@ def ark_translate(text, source_lang, target_lang):
     # 检查API密钥
     api_key = os.getenv('ARK_API_KEY')
     if not api_key:
-        return "错误：请设置ARK_API_KEY环境变量"
+        return "错误：请创建translator.env文件并设置ARK_API_KEY环境变量"
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -119,6 +121,7 @@ def index():
                 --output-bg: #252525;
                 --button-bg: #333;
                 --button-hover: #444;
+                --editor-font-size: 16px;
             }
 
             * {
@@ -222,7 +225,7 @@ def index():
                 padding: 15px;
                 border: 2px solid var(--border-color);
                 border-radius: 8px;
-                font-size: 16px;
+                font-size: var(--editor-font-size);
                 line-height: 1.6;
                 resize: none;
                 font-family: inherit;
@@ -300,7 +303,7 @@ def index():
                 padding: 15px;
                 border: 2px solid var(--border-color);
                 border-radius: 8px;
-                font-size: 16px;
+                font-size: var(--editor-font-size);
                 line-height: 1.6;
                 resize: none;
                 font-family: inherit;
@@ -345,6 +348,8 @@ def index():
                 border-top: 1px solid var(--border-color);
                 display: flex;
                 justify-content: space-between;
+                gap: 20px;
+                flex-wrap: wrap;
                 align-items: center;
                 font-size: 14px;
                 color: var(--text-color);
@@ -354,6 +359,26 @@ def index():
                 display: flex;
                 align-items: center;
                 gap: 10px;
+            }
+
+            .font-size-control {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .font-size-control label {
+                font-weight: 600;
+                color: var(--text-color);
+            }
+
+            .font-size-control select {
+                padding: 6px 10px;
+                border: 1px solid var(--border-color);
+                border-radius: 6px;
+                background: var(--input-bg);
+                color: var(--text-color);
+                font-size: 14px;
             }
 
             .switch {
@@ -530,6 +555,16 @@ def index():
                         </div>
                     </label>
                 </div>
+                <div class="font-size-control">
+                    <label for="fontSizeSelect">字体大小</label>
+                    <select id="fontSizeSelect">
+                        <option value="14">14px</option>
+                        <option value="16" selected>16px</option>
+                        <option value="18">18px</option>
+                        <option value="20">20px</option>
+                        <option value="22">22px</option>
+                    </select>
+                </div>
                 <div id="statusMessage">准备就绪</div>
             </div>
         </div>
@@ -648,6 +683,7 @@ def index():
             const collapseBtn = document.getElementById('collapseBtn');
             const inputSection = document.getElementById('inputSection');
             const outputSection = document.getElementById('outputSection');
+            const fontSizeSelect = document.getElementById('fontSizeSelect');
 
             // 折叠/展开功能
             let isCollapsed = false;
@@ -717,8 +753,14 @@ def index():
                 }
             });
 
+            fontSizeSelect.addEventListener('change', function() {
+                const size = fontSizeSelect.value;
+                document.documentElement.style.setProperty('--editor-font-size', `${size}px`);
+            });
+
             // 初始化字符计数
             updateCharCount();
+            document.documentElement.style.setProperty('--editor-font-size', `${fontSizeSelect.value}px`);
         </script>
     </body>
     </html>
@@ -774,6 +816,8 @@ def test_math():
 
 if __name__ == '__main__':
     if not os.getenv('ARK_API_KEY'):
-        print("⚠️  警告: 请设置ARK_API_KEY环境变量")
+        print("⚠️  严重错误: 请创建translator.env文件并设置ARK_API_KEY环境变量")
+        print("   示例格式: ARK_API_KEY=your_api_key_here")
+        print("   文件路径: /home/louis/ARK-translator/translator.env")
     
     app.run(debug=True, host='127.0.0.1', port=5000)
