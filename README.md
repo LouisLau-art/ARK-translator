@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
-一款基于 ARK 豆包翻译 API 的轻量级深色主题网页翻译器，支持 Markdown/LaTeX 渲染、自动翻译与字体大小自由调节。
+一款基于 ARK 豆包翻译 API 的轻量级深色主题网页翻译器，支持 Markdown/LaTeX 渲染、自动翻译、翻译历史与字体大小调节。
 
 ![演示截图](screenshots/demo.png)
 
@@ -14,14 +14,16 @@
 - 🌙 **深色界面**：自带暗色主题，长时间阅读不刺眼。
 - 🔄 **实时自动翻译**：输入停顿 0.5 秒自动触发，可随时切换开关。
 - 📝 **Markdown/LaTeX 支持**：内置 MathJax，对 `$...$`、`$$...$$` 公式友好。
-- 🌍 **多语言互译**：默认支持中文⇋英文，并提供自动检测。
-- 📋 **一键复制**：翻译结果一键复制为纯文本。
+- 🌍 **多语言互译**：内置 28 种语种选项，并支持源语言自动检测。
+- 📋 **增强复制体验**：复制后按钮会短暂显示 ✔️，反馈更及时。
+- 🧹 **快速清空**：输入输出一键清空，重写更高效。
+- 📜 **本地历史记录**：自动保存最近 5 条翻译，可随时展开重用。
 - 📐 **字体滑杆**：通过拖动滑杆精细调节输入/输出面板字体大小（12px–26px）。
 
 ## 技术栈 🛠
 
 - **后端**：Flask (Python)
-- **前端**：原生 HTML / CSS / JavaScript
+- **前端**：原生 HTML / CSS / JavaScript（拆分静态资源）
 - **API**：ARK Doubao Translation
 - **渲染**：Python-Markdown + MathJax
 
@@ -41,7 +43,7 @@
    ```
 2. **安装依赖**
    ```bash
-   pip install flask requests python-dotenv markdown
+   pip install -r requirements.txt
    ```
 3. **配置 API 密钥**
    ```bash
@@ -53,7 +55,7 @@
    ```
 4. **启动服务**
    ```bash
-   python web_translator.py
+   python app.py
    ```
 5. **访问页面**
    在浏览器打开 [http://127.0.0.1:5000](http://127.0.0.1:5000)。
@@ -75,9 +77,10 @@
 
 ## API 说明 📚
 
-- 当前实现默认支持中文（简体）、英文与自动检测。
-- ARK 豆包翻译 API 官方共支持 28 种语言，可按需求扩展参数。
-- 对外请求默认超时 30 秒，超出会提示“网络错误”。
+- 当前实现内置 28 种语言（详见 `app.py` 中的 `LANGUAGE_MAP`）。
+- 源语言支持自动检测，目标语言需从列表中选择。
+- 翻译请求默认超时 30 秒，超时会提示“网络错误”。
+- 针对常见状态码（401/429 等）提供了更明确的错误提示。
 
 ## 常见问题 ❓
 
@@ -89,9 +92,15 @@
 
 ```
 ARK-translator/
-├── web_translator.py        # Flask 应用主入口（含前端页面）
+├── app.py                   # Flask 应用主入口
+├── templates/
+│   └── index.html           # 页面模板
+├── static/
+│   ├── style.css            # 全部样式
+│   └── script.js            # 前端交互脚本
 ├── translator.env           # 私有环境变量（需手动创建）
 ├── translator.example.env   # 环境变量示例
+├── requirements.txt         # 项目依赖
 └── README.md
 ```
 

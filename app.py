@@ -12,6 +12,37 @@ load_dotenv(BASE_DIR / 'translator.env')
 
 app = Flask(__name__)
 
+LANGUAGE_MAP = {
+    "中文（简体）": "zh",
+    "中文（繁体）": "zh-Hant",
+    "英语": "en",
+    "日语": "ja",
+    "韩语": "ko",
+    "德语": "de",
+    "法语": "fr",
+    "西班牙语": "es",
+    "意大利语": "it",
+    "葡萄牙语": "pt",
+    "俄语": "ru",
+    "泰语": "th",
+    "越南语": "vi",
+    "阿拉伯语": "ar",
+    "捷克语": "cs",
+    "丹麦语": "da",
+    "芬兰语": "fi",
+    "克罗地亚语": "hr",
+    "匈牙利语": "hu",
+    "印尼语": "id",
+    "马来语": "ms",
+    "挪威布克莫尔语": "nb",
+    "荷兰语": "nl",
+    "波兰语": "pl",
+    "罗马尼亚语": "ro",
+    "瑞典语": "sv",
+    "土耳其语": "tr",
+    "乌克兰语": "uk"
+}
+
 def ark_translate(text, source_lang, target_lang):
     """
     调用豆包翻译模型API的函数
@@ -63,11 +94,33 @@ def ark_translate(text, source_lang, target_lang):
         return f"无法解析翻译结果，API响应: {json.dumps(result)}"
             
     except requests.exceptions.HTTPError as http_err:
-        try:
-            error_details = response.json()
-            return f"翻译API错误: {http_err} - {error_details.get('error', {}).get('message', '未知错误')}"
-        except json.JSONDecodeError:
-            return f"翻译API错误: {http_err} - 响应内容不是有效的JSON"
+        resp = http_err.response
+        status_code = resp.status_code if resp else None
+        error_message = None
+
+        if resp is not None:
+            try:
+                error_payload = resp.json()
+                error_message = error_payload.get('error', {}).get('message')
+            except (json.JSONDecodeError, ValueError, AttributeError):
+                error_message = resp.text
+
+        friendly_message = "翻译服务返回错误，请稍后重试。"
+        if status_code == 401:
+            friendly_message = "认证失败，请检查API密钥配置。"
+        elif status_code == 429:
+            friendly_message = "请求过于频繁，请稍后再试。"
+        elif status_code == 400:
+            friendly_message = "请求参数不合法，请检查语言设置。"
+        elif status_code == 403:
+            friendly_message = "没有权限访问翻译服务，请确认账户权限。"
+
+        detail_part = f" - 详细信息: {error_message}" if error_message else ""
+        return f"翻译API错误: {status_code or '未知状态码'} - {friendly_message}{detail_part}"
+    except requests.exceptions.Timeout:
+        return "翻译请求异常: 请求超时，请稍后再试。"
+    except requests.exceptions.RequestException as req_err:
+        return f"翻译请求异常: 网络错误，请检查连接。详见: {str(req_err)}"
     except Exception as e:
         return f"翻译请求异常: {str(e)}"
 
@@ -76,7 +129,7 @@ def index():
     """
     渲染主页，这里不再返回字符串，而是渲染一个HTML文件。
     """
-    return render_template('index.html')
+    return render_template('index.html', languages=LANGUAGE_MAP)
 
 @app.route('/translate', methods=['POST'])
 def translate():
@@ -91,10 +144,20 @@ def translate():
         text = data.get('text', '').strip()
         source_lang = data.get('sourceLang', 'auto')
         target_lang = data.get('targetLang', 'zh')
-        
+
+        if len(text) > 10000:
+            return jsonify({'error': '输入文本过长，请不要超过10,000个字符'}), 413
+
+        valid_codes = set(LANGUAGE_MAP.values())
+        if source_lang != 'auto' and source_lang not in valid_codes:
+            return jsonify({'error': '无效的源语言代码'}), 400
+
+        if target_lang not in valid_codes:
+            return jsonify({'error': '无效的目标语言代码'}), 400
+
         if not text:
             return jsonify({'translation': ''})
-        
+
         translation = ark_translate(text, source_lang, target_lang)
         
         if any(translation.startswith(prefix) for prefix in ["错误：", "翻译错误:", "翻译请求异常:", "翻译API错误:"]):
