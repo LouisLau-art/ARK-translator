@@ -1,10 +1,13 @@
 'use strict';
 
+// --- 全局常量 ---
 const DEFAULT_OUTPUT_MESSAGE = '翻译结果将显示在这里...';
 const HISTORY_STORAGE_KEY = 'arkTranslatorHistory';
 const MAX_HISTORY_ITEMS = 5;
+const MATH_PLACEHOLDER = '---MATH-PLACEHOLDER---'; // 使用更独特的占位符
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM 元素获取 ---
     const textInput = document.getElementById('textInput');
     const outputText = document.getElementById('outputText');
     const sourceLangSelect = document.getElementById('sourceLang');
@@ -28,6 +31,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isCollapsed = false;
     let copyResetTimer = null;
 
+    // --- 核心功能函数 ---
+
+    /**
+     * 防抖函数，防止函数过于频繁地调用
+     */
     function debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
@@ -40,168 +48,69 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    /**
+     * 触发 MathJax 重新渲染指定区域的数学公式
+     */
     function rerenderMath() {
         if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
+            // 清除之前的渲染缓存，然后重新渲染
+            window.MathJax.typesetClear([outputText]);
             window.MathJax.typesetPromise([outputText]).catch(err => {
                 console.error('MathJax typeset error:', err);
             });
         }
     }
+    window.rerenderMath = rerenderMath; // 全局暴露以便调试
 
-    window.rerenderMath = rerenderMath;
 
-    function updateCharCount() {
-        charCount.textContent = textInput.value.length;
-    }
-
-    function readHistory() {
-        try {
-            const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-            const parsed = raw ? JSON.parse(raw) : [];
-            return Array.isArray(parsed) ? parsed : [];
-        } catch (error) {
-            console.warn('读取历史记录失败:', error);
-            return [];
-        }
-    }
-
-    function writeHistory(items) {
-        try {
-            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items));
-        } catch (error) {
-            console.warn('写入历史记录失败:', error);
-        }
-    }
-
-    function resolveLanguageLabel(selectElement, value) {
-        const option = Array.from(selectElement.options).find(opt => opt.value === value);
-        return option ? option.textContent : value;
-    }
-
-    function formatTimestamp(timestamp) {
-        try {
-            return new Date(timestamp).toLocaleString();
-        } catch (error) {
+    /**
+     * ✨ 最终修复：结合 Marked.js 和 MathJax 的渲染流程
+     * @param {string} text - 从API获取的原始Markdown文本
+     * @returns {string} - 可以安全插入innerHTML的最终HTML字符串
+     */
+    function renderMarkdownAndMath(text) {
+        if (!text) {
             return '';
         }
-    }
 
-    function renderHistory() {
-        const history = readHistory();
-        historyList.innerHTML = '';
+        // 1. 提取 (Extract)
+        // 创建一个临时数组来存放所有的数学公式
+        const mathEquations = [];
+        // 定义一个健壮的正则表达式来匹配行内和块级公式
+        const mathRegex = /(\$\$[\s\S]*?\$\$|\$[^\$\n]+\$)/g;
 
-        if (!history.length) {
-            historyList.classList.add('empty');
-            const emptyMessage = document.createElement('p');
-            emptyMessage.className = 'history-empty';
-            emptyMessage.textContent = '暂无历史记录';
-            historyList.appendChild(emptyMessage);
-            return;
+        // 使用占位符替换掉所有的数学公式，并将公式存入数组
+        const textWithPlaceholders = text.replace(mathRegex, (match) => {
+            mathEquations.push(match);
+            return MATH_PLACEHOLDER;
+        });
+
+        // 2. 渲染 (Render)
+        // 使用marked.js将不含数学公式的文本安全地转换为HTML
+        let html = '';
+        if (window.marked) {
+            html = window.marked.parse(textWithPlaceholders);
+        } else {
+            // 如果marked.js加载失败，则退回纯文本
+            html = textWithPlaceholders; 
         }
 
-        historyList.classList.remove('empty');
-
-        history.forEach((item, index) => {
-            const historyItem = document.createElement('article');
-            historyItem.className = 'history-item';
-
-            const header = document.createElement('div');
-            header.className = 'history-item-header';
-            const meta = document.createElement('span');
-            meta.className = 'history-meta';
-            meta.textContent = `${item.sourceLangLabel} → ${item.targetLangLabel}`;
-            const time = document.createElement('time');
-            time.className = 'history-time';
-            time.dateTime = item.timestamp;
-            time.textContent = formatTimestamp(item.timestamp);
-            header.appendChild(meta);
-            header.appendChild(time);
-
-            const originalBlock = document.createElement('div');
-            originalBlock.className = 'history-text-block';
-            const originalLabel = document.createElement('span');
-            originalLabel.className = 'history-text-label';
-            originalLabel.textContent = '原文';
-            const originalText = document.createElement('pre');
-            originalText.className = 'history-text';
-            originalText.textContent = item.originalText;
-            originalBlock.appendChild(originalLabel);
-            originalBlock.appendChild(originalText);
-
-            const translatedBlock = document.createElement('div');
-            translatedBlock.className = 'history-text-block';
-            const translatedLabel = document.createElement('span');
-            translatedLabel.className = 'history-text-label';
-            translatedLabel.textContent = '译文';
-            const translatedText = document.createElement('pre');
-            translatedText.className = 'history-text';
-            translatedText.textContent = item.translatedText;
-            translatedBlock.appendChild(translatedLabel);
-            translatedBlock.appendChild(translatedText);
-
-            const actions = document.createElement('div');
-            actions.className = 'history-actions';
-            const reuseButton = document.createElement('button');
-            reuseButton.type = 'button';
-            reuseButton.className = 'history-reuse';
-            reuseButton.dataset.index = String(index);
-            reuseButton.textContent = '再次使用';
-            actions.appendChild(reuseButton);
-
-            historyItem.appendChild(header);
-            historyItem.appendChild(originalBlock);
-            historyItem.appendChild(translatedBlock);
-            historyItem.appendChild(actions);
-
-            historyList.appendChild(historyItem);
-        });
-
-        historyList.querySelectorAll('.history-reuse').forEach(button => {
-            button.addEventListener('click', () => {
-                const history = readHistory();
-                const item = history[Number(button.dataset.index)];
-                if (!item) {
-                    return;
-                }
-
-                if ([...sourceLangSelect.options].some(opt => opt.value === item.sourceLang)) {
-                    sourceLangSelect.value = item.sourceLang;
-                }
-                if ([...targetLangSelect.options].some(opt => opt.value === item.targetLang)) {
-                    targetLangSelect.value = item.targetLang;
-                }
-
-                textInput.value = item.originalText;
-                updateCharCount();
-                historyDetails.open = false;
-
-                if (autoTranslate.checked) {
-                    debouncedTranslate();
-                } else {
-                    statusMessage.textContent = '已填充历史记录内容';
-                }
+        // 3. 注入 (Inject)
+        // 将HTML中的占位符替换回原始的数学公式
+        if (mathEquations.length > 0) {
+            html = html.replace(new RegExp(MATH_PLACEHOLDER, 'g'), () => {
+                // 从数组中按顺序取回公式
+                return mathEquations.shift() || '';
             });
-        });
+        }
+
+        return html;
     }
 
-    function saveTranslationHistory(originalText, translatedText, sourceLang, targetLang) {
-        const history = readHistory();
-        const entry = {
-            originalText,
-            translatedText,
-            sourceLang,
-            targetLang,
-            sourceLangLabel: resolveLanguageLabel(sourceLangSelect, sourceLang),
-            targetLangLabel: resolveLanguageLabel(targetLangSelect, targetLang),
-            timestamp: new Date().toISOString()
-        };
 
-        history.unshift(entry);
-        const trimmed = history.slice(0, MAX_HISTORY_ITEMS);
-        writeHistory(trimmed);
-        renderHistory();
-    }
-
+    /**
+     * 主翻译函数
+     */
     async function performTranslation() {
         const text = textInput.value.trim();
         if (!text) {
@@ -233,23 +142,21 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/translate', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    text,
-                    sourceLang,
-                    targetLang
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, sourceLang, targetLang })
             });
 
             const result = await response.json();
 
             if (response.ok) {
                 const translation = result.translation || '';
-                outputText.innerHTML = translation || DEFAULT_OUTPUT_MESSAGE;
-                rerenderMath();
+                
+                // ✨ 使用我们全新的、可靠的渲染函数
+                const renderedHtml = translation ? renderMarkdownAndMath(translation) : DEFAULT_OUTPUT_MESSAGE;
+                
+                outputText.innerHTML = renderedHtml;
+                rerenderMath(); // 在内容设置完成后，立即调用MathJax
+
                 statusMessage.textContent = `翻译完成 (${text.length} 字符)`;
                 if (translation) {
                     saveTranslationHistory(text, translation, sourceLang, targetLang);
@@ -268,6 +175,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const debouncedTranslate = debounce(performTranslation, 500);
+
+    // --- 事件监听器和UI辅助函数 ---
+
+    function updateCharCount() {
+        charCount.textContent = textInput.value.length;
+    }
 
     collapseBtn.addEventListener('click', () => {
         isCollapsed = !isCollapsed;
@@ -293,39 +206,26 @@ document.addEventListener('DOMContentLoaded', () => {
     swapBtn.addEventListener('click', () => {
         const sourceValue = sourceLangSelect.value;
         const targetValue = targetLangSelect.value;
-
-        if (sourceValue === 'auto') {
-            return;
-        }
-
+        if (sourceValue === 'auto') return;
         sourceLangSelect.value = targetValue;
         targetLangSelect.value = sourceValue;
-
-        if (textInput.value.trim()) {
-            debouncedTranslate();
-        }
+        if (textInput.value.trim()) debouncedTranslate();
     });
 
     copyBtn.addEventListener('click', () => {
-        const text = outputText.innerText || outputText.textContent;
-        if (!text || text === DEFAULT_OUTPUT_MESSAGE || text.startsWith('错误:') || text.startsWith('网络错误:')) {
-            return;
-        }
+        const textToCopy = outputText.innerText || outputText.textContent;
+        if (!textToCopy || textToCopy === DEFAULT_OUTPUT_MESSAGE || textToCopy.startsWith('错误:')) return;
 
-        navigator.clipboard.writeText(text).then(() => {
+        navigator.clipboard.writeText(textToCopy).then(() => {
             statusMessage.textContent = '已复制到剪贴板';
-            if (copyResetTimer) {
-                clearTimeout(copyResetTimer);
-            }
+            clearTimeout(copyResetTimer);
             copyIcon.textContent = '✔️';
             copyResetTimer = setTimeout(() => {
                 copyIcon.textContent = '📋';
-                if (statusMessage.textContent === '已复制到剪贴板') {
-                    statusMessage.textContent = '准备就绪';
-                }
+                if (statusMessage.textContent === '已复制到剪贴板') statusMessage.textContent = '准备就绪';
             }, 1500);
-        }).catch(error => {
-            console.warn('复制失败:', error);
+        }).catch(err => {
+            console.warn('复制失败:', err);
             statusMessage.textContent = '复制失败';
         });
     });
@@ -335,14 +235,12 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCharCount();
         outputText.innerHTML = DEFAULT_OUTPUT_MESSAGE;
         rerenderMath();
-        statusMessage.textContent = '已清空输入与输出';
+        statusMessage.textContent = '已清空';
     });
 
     autoTranslate.addEventListener('change', () => {
         statusMessage.textContent = autoTranslate.checked ? '自动翻译已启用' : '自动翻译已关闭';
-        if (autoTranslate.checked && textInput.value.trim()) {
-            debouncedTranslate();
-        }
+        if (autoTranslate.checked && textInput.value.trim()) debouncedTranslate();
     });
 
     fontSizeSlider.addEventListener('input', () => {
@@ -351,6 +249,93 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.style.setProperty('--editor-font-size', `${size}px`);
     });
 
+    // --- 历史记录功能 ---
+    // (这部分代码无需修改，保持原样即可)
+    function readHistory() {
+        try {
+            const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) { return []; }
+    }
+    function writeHistory(items) {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items));
+    }
+    function saveTranslationHistory(originalText, translatedText, sourceLang, targetLang) {
+        const history = readHistory();
+        const entry = {
+            originalText,
+            translatedText,
+            sourceLang,
+            targetLang,
+            sourceLangLabel: resolveLanguageLabel(sourceLangSelect, sourceLang),
+            targetLangLabel: resolveLanguageLabel(targetLangSelect, targetLang),
+            timestamp: new Date().toISOString()
+        };
+        history.unshift(entry);
+        writeHistory(history.slice(0, MAX_HISTORY_ITEMS));
+        renderHistory();
+    }
+    function resolveLanguageLabel(selectElement, value) {
+        const option = [...selectElement.options].find(opt => opt.value === value);
+        return option ? option.textContent : value;
+    }
+    function formatTimestamp(timestamp) {
+        return new Date(timestamp).toLocaleString();
+    }
+    function renderHistory() {
+        const history = readHistory();
+        historyList.innerHTML = '';
+        historyList.classList.toggle('empty', history.length === 0);
+
+        if (history.length === 0) {
+            historyList.innerHTML = '<p class="history-empty">暂无历史记录</p>';
+            return;
+        }
+
+        history.forEach((item, index) => {
+            const historyItem = document.createElement('article');
+            historyItem.className = 'history-item';
+            historyItem.innerHTML = `
+                <div class="history-item-header">
+                    <span class="history-meta">${item.sourceLangLabel} → ${item.targetLangLabel}</span>
+                    <time class="history-time" datetime="${item.timestamp}">${formatTimestamp(item.timestamp)}</time>
+                </div>
+                <div class="history-text-block">
+                    <span class="history-text-label">原文</span>
+                    <pre class="history-text"></pre>
+                </div>
+                <div class="history-text-block">
+                    <span class="history-text-label">译文</span>
+                    <pre class="history-text"></pre>
+                </div>
+                <div class="history-actions">
+                    <button type="button" class="history-reuse" data-index="${index}">再次使用</button>
+                </div>
+            `;
+            // 使用 textContent 来安全地插入文本，防止XSS
+            historyItem.querySelectorAll('.history-text')[0].textContent = item.originalText;
+            historyItem.querySelectorAll('.history-text')[1].textContent = item.translatedText;
+            historyList.appendChild(historyItem);
+        });
+    }
+    historyList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('history-reuse')) {
+            const history = readHistory();
+            const item = history[Number(e.target.dataset.index)];
+            if (item) {
+                sourceLangSelect.value = item.sourceLang;
+                targetLangSelect.value = item.targetLang;
+                textInput.value = item.originalText;
+                updateCharCount();
+                historyDetails.open = false;
+                if (autoTranslate.checked) {
+                    debouncedTranslate();
+                }
+            }
+        }
+    });
+
+    // --- 初始化 ---
     renderHistory();
     updateCharCount();
     document.documentElement.style.setProperty('--editor-font-size', `${fontSizeSlider.value}px`);

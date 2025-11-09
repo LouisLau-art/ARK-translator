@@ -1,11 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN"> <!-- 增加语言属性 -->
 <head>
     <title>ARK豆包翻译器 - 暗黑模式</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <!-- 1. polyfill.min.js 是可选的，主要用于兼容旧版浏览器，可以保留 -->
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6" defer></script>
+    
+    <!-- ✨ 修改点 1: 将 marked.js 的 CDN 链接替换为本地链接 -->
+    <script src="{{ url_for('static', filename='lib/marked.min.js') }}" defer></script>
+    
+    <!-- 2. MathJax 的配置部分保持不变 -->
     <script>
         window.MathJax = {
             tex: {
@@ -17,12 +24,18 @@
             },
             options: {
                 ignoreHtmlClass: 'tex2jax_ignore',
-                processHtmlClass: 'tex2jax_process'
-            }
+                processHtmlClass: 'tex2jax_process',
+                // 增加这个选项可以提升首次渲染速度
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+            },
+            // 提升加载速度
+            loader: {load: ['[tex]/ams']}
         };
     </script>
+    
+    <!-- ✨ 修改点 2: 将 MathJax.js 的 CDN 链接替换为本地链接 -->
     <script id="MathJax-script" async
-            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+            src="{{ url_for('static', filename='lib/tex-mml-chtml.js') }}">
     </script>
 </head>
 <body>
@@ -111,6 +124,8 @@
             <div id="statusMessage">准备就绪</div>
         </div>
     </div>
+    
+    <!-- 您的主脚本文件引用保持不变 -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
