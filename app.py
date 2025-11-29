@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, jsonify
 import requests
 import os
 import json
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -42,6 +43,17 @@ LANGUAGE_MAP = {
     "土耳其语": "tr",
     "乌克兰语": "uk"
 }
+
+# Constants for the translation model limits
+MAX_INPUT_TOKENS = 1000  # Maximum input tokens for the model (approx 4,000 characters)
+CHUNK_OVERLAP = 100      # Overlap between chunks to maintain context
+
+# Regex patterns for Markdown structure detection
+HEADING_PATTERN = re.compile(r'^(#+)\s*(.*)$', re.MULTILINE)
+CODE_BLOCK_PATTERN = re.compile(r'^(```.*?^```)$', re.DOTALL | re.MULTILINE)
+
+LIST_ITEM_PATTERN = re.compile(r'^(\s*)([-+*]\s+|\d+\.\s+)(.*)$', re.MULTILINE)
+BLOCKQUOTE_PATTERN = re.compile(r'^(>\s*.*)$', re.MULTILINE)
 
 def ark_translate(text, source_lang, target_lang):
     """
@@ -124,6 +136,128 @@ def ark_translate(text, source_lang, target_lang):
     except Exception as e:
         return f"翻译请求异常: {str(e)}"
 
+def split_markdown(text):
+    """
+    Split long Markdown text into manageable chunks while preserving the structure.
+    
+    The splitting strategy:
+    1. Code blocks are kept intact as single chunks
+    2. Heading structures start new chunks to maintain context
+    3. Paragraphs are split at empty lines
+    4. Chunks are kept under the model's token limit with some buffer
+    """
+    chunks = []
+    
+    # First extract all code blocks
+    code_blocks = list(CODE_BLOCK_PATTERN.finditer(text))
+    
+    if code_blocks:
+        # Process content between code blocks
+        prev_end = 0
+        for code_match in code_blocks:
+            before_code = text[prev_end:code_match.start()]
+            
+            # Split and process the content before the code block
+            if before_code.strip():
+                # Split non-code content by empty lines to get paragraphs
+                paragraphs = before_code.split('\n\n')
+                current_chunk = []
+                
+                for para in paragraphs:
+                    if not para:
+                        continue
+                        
+                    potential_chunk = current_chunk + [para] if current_chunk else [para]
+                    potential_len = len('\n\n'.join(potential_chunk))
+                    
+                    # Check if it's a heading - start new chunk
+                    if HEADING_PATTERN.match(para):
+                        if current_chunk:  # If we have existing content, save it
+                            chunks.append('\n\n'.join(current_chunk))
+                        current_chunk = [para]  # New chunk starts with this heading
+                    
+                    # Check if potential chunk is within size limit
+                    elif potential_len < MAX_INPUT_TOKENS - CHUNK_OVERLAP:
+                        current_chunk = potential_chunk
+                    
+                    else:
+                        if current_chunk:
+                            chunks.append('\n\n'.join(current_chunk))
+                        current_chunk = [para]
+                
+                if current_chunk:
+                    chunks.append('\n\n'.join(current_chunk))
+            
+            # Add the code block as a single chunk
+            chunks.append(code_match.group())
+            prev_end = code_match.end()
+        
+        # Process content after the last code block
+        after_code = text[prev_end:]
+        if after_code.strip():
+            paragraphs = after_code.split('\n\n')
+            current_chunk = []
+            
+            for para in paragraphs:
+                if not para:
+                    continue
+                    
+                potential_chunk = current_chunk + [para] if current_chunk else [para]
+                potential_len = len('\n\n'.join(potential_chunk))
+                
+                if HEADING_PATTERN.match(para):
+                    if current_chunk:
+                        chunks.append('\n\n'.join(current_chunk))
+                    current_chunk = [para]
+                
+                elif potential_len < MAX_INPUT_TOKENS - CHUNK_OVERLAP:
+                    current_chunk = potential_chunk
+                
+                else:
+                    if current_chunk:
+                        chunks.append('\n\n'.join(current_chunk))
+                    current_chunk = [para]
+            
+            if current_chunk:
+                chunks.append('\n\n'.join(current_chunk))
+    
+    else:
+        # No code blocks, split by paragraphs and headings
+        paragraphs = text.split('\n\n')
+        current_chunk = []
+        
+        for para in paragraphs:
+            if not para:
+                continue
+                
+            potential_chunk = current_chunk + [para] if current_chunk else [para]
+            potential_len = len('\n\n'.join(potential_chunk))
+            
+            if HEADING_PATTERN.match(para):
+                if current_chunk:
+                    chunks.append('\n\n'.join(current_chunk))
+                current_chunk = [para]
+                
+            elif potential_len < MAX_INPUT_TOKENS - CHUNK_OVERLAP:
+                current_chunk = potential_chunk
+                
+            else:
+                if current_chunk:
+                    chunks.append('\n\n'.join(current_chunk))
+                current_chunk = [para]
+        
+        if current_chunk:
+            chunks.append('\n\n'.join(current_chunk))
+    
+    # Clean up and ensure chunks are properly formatted
+    clean_chunks = []
+    for chunk in chunks:
+        stripped = chunk.strip()
+        if stripped:
+            clean_chunks.append(stripped)
+    
+    return clean_chunks
+
 @app.route('/')
 def index():
     """
@@ -145,8 +279,9 @@ def translate():
         source_lang = data.get('sourceLang', 'auto')
         target_lang = data.get('targetLang', 'zh')
 
-        if len(text) > 10000:
-            return jsonify({'error': '输入文本过长，请不要超过10,000个字符'}), 413
+        # Remove the 10,000 character limit since we now support splitting
+        # if len(text) > 10000:
+        #     return jsonify({'error': '输入文本过长，请不要超过10,000个字符'}), 413
 
         valid_codes = set(LANGUAGE_MAP.values())
         if source_lang != 'auto' and source_lang not in valid_codes:
@@ -158,11 +293,23 @@ def translate():
         if not text:
             return jsonify({'translation': ''})
 
-        translation = ark_translate(text, source_lang, target_lang)
+        # Split the Markdown into chunks
+        markdown_chunks = split_markdown(text)
         
-        if any(translation.startswith(prefix) for prefix in ["错误：", "翻译错误:", "翻译请求异常:", "翻译API错误:"]):
-            return jsonify({'error': translation}), 500
+        # Translate each chunk individually
+        translated_chunks = []
+        for chunk in markdown_chunks:
+            translated_chunk = ark_translate(chunk, source_lang, target_lang)
             
+            # Check if translation failed for this chunk
+            if any(translated_chunk.startswith(prefix) for prefix in ["错误：", "翻译API错误:", "翻译请求异常:"]):
+                return jsonify({'error': translated_chunk}), 500
+            
+            translated_chunks.append(translated_chunk)
+        
+        # Merge the translated chunks back together
+        translation = '\n\n'.join(translated_chunks)
+        
         return jsonify({'translation': translation})
         
     except Exception as e:
