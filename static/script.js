@@ -3,7 +3,6 @@
 // --- 全局常量 ---
 const DEFAULT_OUTPUT_MESSAGE = '翻译结果将显示在这里...';
 const HISTORY_STORAGE_KEY = 'arkTranslatorHistory';
-const MAX_HISTORY_ITEMS = 5;
 const MATH_PLACEHOLDER = '---MATH-PLACEHOLDER---'; // 使用更独特的占位符
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -272,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
             timestamp: new Date().toISOString()
         };
         history.unshift(entry);
-        writeHistory(history.slice(0, MAX_HISTORY_ITEMS));
+        writeHistory(history); // Remove limit on history items
         renderHistory();
     }
     function resolveLanguageLabel(selectElement, value) {
